@@ -1,0 +1,9 @@
+### install.packages("bio3d", dependencies=TRUE)
+### http://thegrantlab.org/bio3d/reference/entropy.html
+library('bio3d')
+
+aln <- read.fasta("AMELX_Representative.fa")  ##### should not contain '?', replace with '-'
+
+h   <- entropy(aln)
+H <- h$H.norm
+con <- consensus(aln)
