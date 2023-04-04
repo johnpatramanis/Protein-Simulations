@@ -3,6 +3,7 @@
 
 
 import os
+import random
 import os.path
 from os import listdir
 from os.path import isfile, join, isdir
@@ -33,6 +34,19 @@ for line in NEWICK_LIST_FILE:
 SAMPLES=list(set(SAMPLES))
 
 
+############################################################################################################################################################################################################################################################
+
+########### Function to return list of sorted files corresponding to each sample
+
+def Get_Genes_For_Sample(Sample):
+    
+    ### Get nubmer from dictionary
+    How_Many_Genes=SAMPLES_TO_NUMBER_OF_PROTEINS[Sample]
+    
+    ### Format of the files as they will be requested
+    LIST_OF_GENES_TO_ASK=[ F'Newick_Files/{Sample}/GENE_{X}/Newick_File_aa.fasta' for X in range(0,How_Many_Genes) ]
+    
+    return LIST_OF_GENES_TO_ASK
 
 
 
@@ -120,11 +134,21 @@ rule Create_Newick_TXT_Files:
         
             if os.path.isdir(F'Newick_Files/{SAMPLE}')==False:  #### Create sample folder
                 shell(F'mkdir Newick_Files/{SAMPLE}')
+                
             if os.path.isdir(F'Newick_Files/{SAMPLE}')==True:  #### If it exist, remove previous fodler, create it anew
                 shell(F'rm -rf Newick_Files/{SAMPLE}')
                 shell(F'mkdir Newick_Files/{SAMPLE}')
             
+            ### How many genes for this sample?
+            Number_of_Genes=SAMPLES_TO_NUMBER_OF_PROTEINS[SAMPLE]
             
+            #### Generate one folder for each gene with the Newick tree inside
+            for GENE in range(0,Number_of_Genes):
+                shell(F'mkdir Newick_Files/{SAMPLE}/GENE_{GENE}')
+                shell(F"echo '{SAMPLES_TO_NEWICK[SAMPLE]}' > Newick_Files/{SAMPLE}/GENE_{GENE}/Newick_File.txt") ### Create Newick txt inside the sample & Gene folder
+            
+            
+            #### Final output file (for Snakemake to know the job was done)
             shell(F"echo '{SAMPLES_TO_NEWICK[SAMPLE]}' > Newick_Files/{SAMPLE}/Newick_File.txt") ### Create Newick txt inside the sample folder
 
 
@@ -143,32 +167,44 @@ rule Create_Newick_TXT_Files:
 
 
 ######################################################################################################################
-#### Step 2 - Generate the Trees ###
+#### Step 2 - Generate the Gene Trees ###
 
 
-
-#### Step 2
-rule Generate_The_Trees_Through_SlimTree:
+rule Generate_Individual_Gene_Through_SlimTree:
     input:
         Newick_File='Newick_Files/{sample}/Newick_File.txt'
     output:
+        Slim_Tree_Output_Files='Newick_Files/{sample}/GENE_{GENE}/Newick_File_aa.fasta'
+    threads:2
+    run:
+        
+        #### Clean up Gene folder from previous fasta folders
+        shell(F'rm -rf Newick_Files/{wildcards.sample}/GENE_{wildcards.GENE}/*.fasta')
+        
+        #### Get Random Length between boundaries:
+        LENGTH=random.randint(80, 7500)
+        
+        #### Run Tree for this Gene
+        shell(F'python3 slim-tree/SLiMTree.py -g {LENGTH} -i Newick_Files/{wildcards.sample}/GENE_{wildcards.GENE}/Newick_File.txt -T SLim-Tree -k 1 -v 1e-8')
+
+
+
+
+#### Step 2 - CheckMark that trees were run for this sample
+rule Generate_The_Trees_Through_SlimTree:
+    input:
+        GENES = lambda wildcards: Get_Genes_For_Sample(wildcards.sample)
+    output:
         Slim_Tree_Output_Files='Newick_Files/{sample}/Simulations_Complete'
-    threads:4
+    threads:2
     run:
     
-        SAMPLE=wildcards.sample
+        SAMPLE=wildcards.sample 
+        ## Check that all simulations for this 'sample' were run
         
-        ### For each simulated gene
-        for GENE in range(0,SAMPLES_TO_NUMBER_OF_PROTEINS[SAMPLE]): ### Loop for each gene for this phylogeny
-            
-            if os.path.isdir(F'Newick_Files/{SAMPLE}/GENE_{GENE}')==True:
-                shell(F'rm -rf Newick_Files/{SAMPLE}/GENE_{GENE}')
-                
-            shell(F'mkdir Newick_Files/{SAMPLE}/GENE_{GENE}')
-            shell(F'python3 slim-tree/SLiMTree.py -g 1000 -i {input.Newick_File} -T SLim-Tree -k 1 -v 1.5e-6')
-            
-            shell(F'mv  Newick_Files/{SAMPLE}/*fasta Newick_Files/{SAMPLE}/GENE_{GENE}/')
         
+        
+        ### Checkmark this sample
         shell(F'touch Newick_Files/{SAMPLE}/Simulations_Complete')
 
 
@@ -265,7 +301,7 @@ rule Create_Datasets:
 
 
 ######################################################################################################################
-#### Step 5 - Final Output Prep form all Runs
+#### Step 5 - Final Output Prep from all Runs
 
 
 

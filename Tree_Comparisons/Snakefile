@@ -1,0 +1,107 @@
+###### CONDA ENVIRONMENT for Entropy_Calculations & Treedist: conda install -c conda-forge -c bioconda r-treedist snakemake biopython
+######
+
+import os
+import os.path
+from os import listdir
+from os.path import isfile, join, isdir
+
+
+###### Prepare Samples
+######################
+SAMPLES=[]
+NEWICK_LIST_FILE=open('../Newick_Trees.txt','r')
+SAMPLES_TO_NEWICK={}
+SAMPLES_TO_NUMBER_OF_PROTEINS={}
+
+
+for line in NEWICK_LIST_FILE:
+    line=line.strip().split()
+    SAMPLE=line[0]
+    SAMPLES.append(SAMPLE)
+    SAMPLES_TO_NEWICK[SAMPLE]=line[1]
+    SAMPLES_TO_NUMBER_OF_PROTEINS[SAMPLE]=int(line[2])
+
+SAMPLES=list(set(SAMPLES))
+
+
+
+
+######################
+
+
+
+
+############################################################################################################################################################################################################################################################
+
+
+
+###### One Rule to Rule them ALL
+
+rule all:
+    input:
+        '../Newick_Trees.txt',
+        Slim_Tree_Input_Trees=expand('../Newick_Files/{SAMPLE}/Newick_File.txt',SAMPLE=SAMPLES),
+        PaleoProPhyler_Output_Trees_ML=expand('../Dataset_Analysis/Workspace/2_DATASETS/{SAMPLE}_Dataset/CONCATINATED/CONCATINATED_aln_e.phy_phyml_tree.txt',SAMPLE=SAMPLES),
+        PaleoProPhyler_Output_Trees_BAY=expand('../Dataset_Analysis/Workspace/2_DATASETS/{SAMPLE}_Dataset/CONCATINATED/CONCATINATED_o.nex.con.tre',SAMPLE=SAMPLES),
+        Tree_Distance_Measurements=expand('{SAMPLE}/Tree_Distances.txt',SAMPLE=SAMPLES),
+        Entropies=expand('{SAMPLE}/Entropies.txt',SAMPLE=SAMPLES)
+
+
+
+
+
+
+
+##############################
+##### Step 1
+rule Compare_Input_to_Output_CONCAT_Trees:
+    input:
+        Slim_Tree_Input_Tree='../Newick_Files/{sample}/Newick_File.txt',
+        PaleoProPhyler_Output_Tree_ML='../Dataset_Analysis/Workspace/2_DATASETS/{sample}_Dataset/CONCATINATED/CONCATINATED_aln_e.phy_phyml_tree.txt',
+        PaleoProPhyler_Output_Tree_BAY='../Dataset_Analysis/Workspace/2_DATASETS/{sample}_Dataset/CONCATINATED/CONCATINATED_o.nex.con.tre',
+    output:
+        Tree_Distance_Measurements='{sample}/Tree_Distances.txt'
+    threads:1
+    run:
+        SAMPLE=wildcards.sample
+        
+        #### Remove prexisitng sample folder
+        if os.path.isdir(F'{SAMPLE}')==True:
+            shell(F'rm -rf {SAMPLE}')
+
+        ##### Create anew
+        shell(F'mkdir {SAMPLE}')
+        
+        shell(F'Rscript Tree_Dist.r {input.Slim_Tree_Input_Tree} {input.PaleoProPhyler_Output_Tree_ML} {output.Tree_Distance_Measurements}')
+        
+    
+
+    
+        
+##############################
+##### Step 2 Calculate Entropy for generated proteins
+
+rule Generate_Entropy_For_Each_Gene_of_Run:
+    input:
+        Slim_Tree_Input_Tree='../Newick_Files/{sample}/Newick_File.txt',
+        Tree_Distance_Measurements='{sample}/Tree_Distances.txt'
+    output:
+        Entropies='{sample}/Entropies.txt'
+    threads:1
+    run:
+    
+        SAMPLE=wildcards.sample
+        shell(F'rm -rf {SAMPLE}/Entropies.txt') ### Clean up previous entropies for this run
+        
+        ### Get entropy of each protein/gene
+        for GENE in range(0,SAMPLES_TO_NUMBER_OF_PROTEINS[SAMPLE]):
+            shell(F'Rscript Calc_Entropy_of_Fasta.r Newick_File_aa.fasta ../Newick_Files/{SAMPLE}/GENE_{GENE}/ ./{SAMPLE}/')
+            shell(F'cat {SAMPLE}/GENE_{GENE}.entr >> {SAMPLE}/Entropies.txt')
+
+
+
+
+
+##############################
+##### Step 3 ??
